@@ -1,6 +1,6 @@
 # Application d'Annotation pour YOLO Pose au format COCO
 
-Cette application Python 3 permet d'annoter des datasets destinés à la détection de poses humaines pour le modèle YOLO, en utilisant le format d'annotation COCO. Elle permet de charger des images et leurs annotations associées (fichier `annotations.coco.json`), puis de modifier, déplacer et sauvegarder les points d'annotation pour chaque image dans le dataset.
+Cette application Python 3 permet d'annoter des datasets destinés à la détection de poses humaines pour le modèle YOLO, en utilisant le format d'annotation COCO. Elle permet de charger des images et leurs annotations associées (fichier `annotations.coco.json`), puis de modifier et sauvegarder de nouveaux points d'annotation pour chaque image.
 
 ## Fonctionnalités principales
 
@@ -27,11 +27,11 @@ Cette application Python 3 permet d'annoter des datasets destinés à la détect
   Un bouton "Suivant" permet de passer à l'image suivante dans le dataset (index +1). Un bouton "Précédent" permet de revenir à l'image précédente (index -1).
   À chaque changement d'image, les cercles sont automatiquement positionnés selon les coordonnées des keypoints de cette image, et l'utilisateur peut les ajuster à nouveau.
 
-## Dépendances
+## Prérequis
 
-Pour exécuter cette application, vous aurez besoin des bibliothèques suivantes :
+Pour exécuter cette application, vous aurez besoin des éléments suivants :
 
-- **Python 3.x**
+- Testé avec **Python 3.12.3** 
 - **Tkinter** : pour créer l'interface graphique.
 - **Pillow** : pour charger et manipuler les images.
 - **JSON** : pour traiter le fichier d'annotations COCO.
