@@ -24,6 +24,8 @@ class CocoAnnotationTool:
         self.drag_data = {"x": 0, "y": 0, "item": None}
         self.mode = "edit"  # "edit" ou "grab"
         self.keypoint_names = []  # Pour stocker les noms des keypoints
+        self.image_width = 0
+        self.image_height = 0
         
         self.setup_ui()
     
@@ -106,6 +108,29 @@ class CocoAnnotationTool:
         self.keypoint_label = ttk.Label(control_frame, text="Keypoint: -")
         self.keypoint_label.pack(fill=tk.X, pady=5)
         
+        # Étiquette pour afficher les coordonnées du point sélectionné
+        self.coord_frame = ttk.Frame(control_frame)
+        self.coord_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(self.coord_frame, text="Coordonnées:").pack(anchor=tk.W)
+        
+        coord_details_frame = ttk.Frame(self.coord_frame)
+        coord_details_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(coord_details_frame, text="X:").grid(row=0, column=0, sticky=tk.W, padx=2)
+        self.x_coord_label = ttk.Label(coord_details_frame, text="-")
+        self.x_coord_label.grid(row=0, column=1, sticky=tk.W, padx=2)
+        
+        ttk.Label(coord_details_frame, text="Y:").grid(row=1, column=0, sticky=tk.W, padx=2)
+        self.y_coord_label = ttk.Label(coord_details_frame, text="-")
+        self.y_coord_label.grid(row=1, column=1, sticky=tk.W, padx=2)
+        
+        # Visibilité du point
+        visibility_frame = ttk.Frame(self.coord_frame)
+        visibility_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(visibility_frame, text="Visibilité:").pack(side=tk.LEFT, padx=2)
+        self.visibility_label = ttk.Label(visibility_frame, text="-")
+        self.visibility_label.pack(side=tk.LEFT, padx=2)
+        
         # Séparateur
         ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
         
@@ -179,6 +204,10 @@ class CocoAnnotationTool:
         image_id = image_info['id']
         image_filename = image_info.get('file_name') or image_info.get('filename')
         
+        # Mettre à jour la taille de l'image
+        self.image_width = image_info.get('width', 0)
+        self.image_height = image_info.get('height', 0)
+        
         if not image_filename:
             messagebox.showerror("Erreur", f"Nom de fichier non trouvé pour l'image {self.current_image_index}")
             return
@@ -187,6 +216,11 @@ class CocoAnnotationTool:
         try:
             image_path = os.path.join(self.dataset_path, image_filename)
             self.original_image = Image.open(image_path)
+            
+            # Si les dimensions ne sont pas dans le JSON, les récupérer de l'image
+            if self.image_width == 0 or self.image_height == 0:
+                self.image_width, self.image_height = self.original_image.size
+                
             self.reset_view(update_image=False)
             self.update_display()
             
@@ -200,6 +234,9 @@ class CocoAnnotationTool:
         """Charge les keypoints pour l'image courante"""
         self.clear_circles()
         self.keypoints = []
+        
+        # Réinitialiser l'affichage des coordonnées
+        self.clear_keypoint_info()
         
         # Trouver l'annotation correspondant à l'image courante
         for annotation in self.json_data['annotations']:
@@ -225,6 +262,18 @@ class CocoAnnotationTool:
         self.clear_circles()
         
         for x, y, visibility, idx in self.keypoints:
+            # Vérifier que le point est dans les limites de l'image
+            if not (0 <= x <= self.image_width and 0 <= y <= self.image_height):
+                # Limiter les coordonnées aux dimensions de l'image
+                x = max(0, min(x, self.image_width))
+                y = max(0, min(y, self.image_height))
+                
+                # Mettre à jour les keypoints avec les coordonnées limitées
+                for i, (_, _, v, idx_) in enumerate(self.keypoints):
+                    if idx_ == idx:
+                        self.keypoints[i] = (x, y, v, idx_)
+                        break
+            
             # Appliquer la transformation (zoom et pan)
             transformed_x, transformed_y = self.transform_point(x, y)
             
@@ -243,13 +292,20 @@ class CocoAnnotationTool:
             # Ajouter le cercle à la liste
             self.circles.append((circle, idx))
             
-            # Ajouter un texte si les noms des keypoints sont disponibles
-            if self.keypoint_names and idx < len(self.keypoint_names):
-                self.canvas.create_text(
-                    transformed_x, transformed_y - self.circle_radius - 5,
-                    text=str(idx), font=("Arial", 8),
-                    fill="white", tags=f"keypoint_text_{idx}"
-                )
+            # Ajouter le nom du keypoint au lieu de l'index
+            keypoint_name = self.get_keypoint_name(idx)
+            self.canvas.create_text(
+                transformed_x, transformed_y - self.circle_radius - 5,
+                text=keypoint_name, font=("Arial", 8),
+                fill="white", tags=f"keypoint_text_{idx}"
+            )
+    
+    def get_keypoint_name(self, idx):
+        """Retourne le nom du keypoint à partir de son index"""
+        if self.keypoint_names and idx < len(self.keypoint_names):
+            return self.keypoint_names[idx]
+        else:
+            return str(idx)
     
     def clear_circles(self):
         """Supprime tous les cercles du canvas"""
@@ -297,6 +353,27 @@ class CocoAnnotationTool:
         """Transforme des coordonnées canvas en coordonnées image originales"""
         return (x - self.pan_x) / self.zoom_factor, (y - self.pan_y) / self.zoom_factor
     
+    def clear_keypoint_info(self):
+        """Réinitialise l'affichage des informations du keypoint"""
+        self.keypoint_label.config(text="Keypoint: -")
+        self.x_coord_label.config(text="-")
+        self.y_coord_label.config(text="-")
+        self.visibility_label.config(text="-")
+    
+    def update_keypoint_info(self, idx, x, y, visibility):
+        """Met à jour l'affichage des informations du keypoint"""
+        # Mettre à jour le nom du keypoint
+        keypoint_name = self.get_keypoint_name(idx)
+        self.keypoint_label.config(text=f"Keypoint: {keypoint_name}")
+            
+        # Mettre à jour les coordonnées
+        self.x_coord_label.config(text=f"{x:.1f}")
+        self.y_coord_label.config(text=f"{y:.1f}")
+        
+        # Mettre à jour la visibilité
+        visibility_text = "Visible" if visibility == 2 else "Non visible" if visibility == 1 else "Non marqué"
+        self.visibility_label.config(text=f"{visibility} ({visibility_text})")
+    
     def on_mouse_press(self, event):
         """Gère l'événement de clic de souris"""
         if self.mode == "edit":
@@ -308,13 +385,13 @@ class CocoAnnotationTool:
                 self.drag_data["x"] = event.x
                 self.drag_data["y"] = event.y
                 
-                # Afficher le nom du keypoint sélectionné
+                # Afficher les informations du keypoint sélectionné
                 for circle, idx in self.circles:
                     if circle == closest[0]:
-                        if self.keypoint_names and idx < len(self.keypoint_names):
-                            self.keypoint_label.config(text=f"Keypoint: {self.keypoint_names[idx]} ({idx})")
-                        else:
-                            self.keypoint_label.config(text=f"Keypoint: {idx}")
+                        for kp_x, kp_y, kp_v, kp_idx in self.keypoints:
+                            if kp_idx == idx:
+                                self.update_keypoint_info(idx, kp_x, kp_y, kp_v)
+                                break
                         break
         elif self.mode == "grab":
             # Mode déplacement d'image
@@ -352,8 +429,28 @@ class CocoAnnotationTool:
                     # Convertir en coordonnées d'image originale
                     orig_x, orig_y = self.inverse_transform_point(center_x, center_y)
                     
+                    # Limiter les coordonnées aux dimensions de l'image
+                    orig_x = max(0, min(orig_x, self.image_width))
+                    orig_y = max(0, min(orig_y, self.image_height))
+                    
                     # Mettre à jour les keypoints
-                    self.keypoints[i] = (orig_x, orig_y, self.keypoints[i][2], idx)
+                    visibility = self.keypoints[i][2]
+                    self.keypoints[i] = (orig_x, orig_y, visibility, idx)
+                    
+                    # Mettre à jour l'affichage des coordonnées
+                    self.update_keypoint_info(idx, orig_x, orig_y, visibility)
+                    
+                    # Si les coordonnées ont été limitées, mettre à jour la position du cercle
+                    new_x, new_y = self.transform_point(orig_x, orig_y)
+                    center_x_canvas = (x1 + x2) / 2
+                    center_y_canvas = (y1 + y2) / 2
+                    
+                    if new_x != center_x_canvas or new_y != center_y_canvas:
+                        dx_correction = new_x - center_x_canvas
+                        dy_correction = new_y - center_y_canvas
+                        self.canvas.move(circle, dx_correction, dy_correction)
+                        self.canvas.move(f"keypoint_text_{idx}", dx_correction, dy_correction)
+                    
                     break
                     
         elif self.mode == "grab":
